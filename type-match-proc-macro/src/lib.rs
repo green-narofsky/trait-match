@@ -27,19 +27,28 @@ struct SealConfig {
     // keep a span around, we should do that.
     // So, we store an Ident.
     upcast: Option<Ident>,
+    /// Determine whether to emit the enum at all.
+    // If the enum key is given, or if upcast is set,
+    // this should be true.
+    // Otherwise, this should be false.
+    make_enum: bool,
 }
 impl SealConfig {
     fn new() -> Self {
         Self {
             enum_name: None,
             upcast: None,
+            make_enum: false,
         }
     }
     fn rename_enum(&mut self, name: String) {
         self.enum_name = Some(name);
+        self.make_enum = true;
     }
     fn set_upcast(&mut self, upcast: Ident) {
         self.upcast = Some(upcast);
+        // Design question: Should `upcast` imply `enum`?
+        self.make_enum = true;
     }
     fn get_enum_name(&self, trait_name: &Ident) -> String {
         match self.enum_name {
@@ -54,16 +63,20 @@ impl SealConfig {
 
 #[derive(Debug)]
 enum AttrArg {
-    Enum(Ident),
+    Enum(Option<Ident>),
     Upcast(Ident),
 }
 impl syn::parse::Parse for AttrArg {
     fn parse(input: ::syn::parse::ParseStream) -> ::syn::parse::Result<Self> {
         if input.peek(Token![enum]) {
             let _enum_token = input.parse::<Token![enum]>()?;
-            let _equal_sign = input.parse::<Token![=]>()?;
-            let name = input.parse::<Ident>()?;
-            Ok(AttrArg::Enum(name))
+            if input.peek(Token![,]) || input.is_empty() {
+                Ok(AttrArg::Enum(None))
+            } else {
+                let _equal_sign = input.parse::<Token![=]>()?;
+                let name = input.parse::<Ident>()?;
+                Ok(AttrArg::Enum(Some(name)))
+            }
         } else if input.peek(Ident) {
             let ident = input.parse::<Ident>().unwrap();
             if format!("{}", ident) == "upcast" {
@@ -95,7 +108,8 @@ fn take_attr_args(attrs: &mut Vec<Attribute>) -> ::syn::parse::Result<SealConfig
                 let parsed_args = attr.parse_args_with(Punctuated::<AttrArg, Token![,]>::parse_terminated)?;
                 for x in parsed_args.iter() {
                     match x {
-                        AttrArg::Enum(name) => config.rename_enum(name.to_string()),
+                        AttrArg::Enum(Some(name)) => config.rename_enum(name.to_string()),
+                        AttrArg::Enum(None) => config.make_enum = true,
                         AttrArg::Upcast(name) => config.set_upcast(name.clone()),
                     }
                 }
@@ -138,13 +152,15 @@ pub fn sealed(args: TokenStream, input: TokenStream) -> TokenStream {
     for meta in args.iter() {
         variants.append_all(quote! { #meta(#meta), });
         sealed_impls.append_all(quote! { impl #trait_seal_name::Sealed for #meta {} });
-        variant_from_impls.append_all(quote! {
-            impl ::core::convert::From<#meta> for #trait_enum_name {
-                fn from(v: #meta) -> Self {
-                    Self::#meta(v)
+        if config.make_enum {
+            variant_from_impls.append_all(quote! {
+                impl ::core::convert::From<#meta> for #trait_enum_name {
+                    fn from(v: #meta) -> Self {
+                        Self::#meta(v)
+                    }
                 }
-            }
-        });
+            });
+        }
     }
 
     let (upcast_trait, upcast_impls) = match config.upcast {
@@ -195,6 +211,24 @@ pub fn sealed(args: TokenStream, input: TokenStream) -> TokenStream {
         ),
     };
 
+    let trait_enum = if config.make_enum {
+        quote! {
+            // This enum is unreachable from outside via the Upcast trait,
+            // since the Upcast trait is unreachable from outside.
+            // This enum is marked the same visibility as the
+            // trait that it *is* reachable through, so it will
+            // always be appropriately reachable.
+            // So, the `private_in_public` warning is unnecessary.
+            #[allow(private_in_public)]
+            #[allow(non_camel_case_types)]
+            #enum_vis enum #trait_enum_name {
+                #variants
+            }
+        }
+    } else {
+        ::proc_macro2::TokenStream::new()
+    };
+
     let out = input.into_token_stream();
     let result = (quote! {
         #[allow(non_snake_case)]
@@ -209,17 +243,7 @@ pub fn sealed(args: TokenStream, input: TokenStream) -> TokenStream {
         // Emit the trait declaration as is.
         #out
         // Generate an enum for matching over it!
-        // This enum is unreachable from outside via the Upcast trait,
-        // since the Upcast trait is unreachable from outside.
-        // This enum is marked the same visibility as the
-        // trait that it *is* reachable through, so it will
-        // always be appropriately reachable.
-        // So, the `private_in_public` warning is unnecessary.
-        #[allow(private_in_public)]
-        #[allow(non_camel_case_types)]
-        #enum_vis enum #trait_enum_name {
-            #variants
-        }
+        #trait_enum
         // Generate From impls for the enum, so we can
         // convert all implementors to the enum.
         #variant_from_impls

@@ -1,6 +1,6 @@
 //! Facilities for matching on the types of expressions.
 
-pub use ::type_match_proc_macro::sealed;
+pub use ::trait_match_proc_macro::sealed;
 
 /// Matching over types on trait objects we can downcast.
 #[doc(hidden)]

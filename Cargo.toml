@@ -1,5 +1,5 @@
 [package]
-name = "type-match"
+name = "trait-match"
 version = "0.1.0"
 authors = ["John Matthew Narofsky <7ytd765789@gmail.com>"]
 edition = "2018"
@@ -7,10 +7,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-type-match-proc-macro = { path = "./type-match-proc-macro" }
+trait-match-proc-macro = { path = "./trait-match-proc-macro" }
 
 [[example]]
 name = "sealed-trait"
 
 [workspace]
-members = ["type-match-proc-macro"]
+members = ["trait-match-proc-macro"]

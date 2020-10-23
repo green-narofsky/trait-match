@@ -11,7 +11,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-trait-match-proc-macro = { path = "./trait-match-proc-macro" }
+trait-match-proc-macro = { path = "./trait-match-proc-macro", version = "0.1" }
 
 [[example]]
 name = "sealed-trait"

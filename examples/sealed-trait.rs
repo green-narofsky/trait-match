@@ -1,4 +1,4 @@
-use type_match::sealed;
+use trait_match::sealed;
 
 struct Heya;
 struct Boog;

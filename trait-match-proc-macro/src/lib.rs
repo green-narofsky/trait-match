@@ -254,6 +254,98 @@ pub fn sealed(args: TokenStream, input: TokenStream) -> TokenStream {
     result
 }
 
+/// A type that implements the trait we're doing all this for.
+struct ImplType;
+/// Module full of items we don't want to directly expose.
+///
+/// Note that this does not need to contain impls of
+/// hidden traits, since the actual privacy of those traits
+/// is unchanged by the arrangement of their impls.
+///
+/// This is just a pathing distinction, so impl blocks should be
+/// placed where it is most convenient to name the implementing types.
+struct HiddenItems {
+    module_name: Ident,
+    seal: SealedTrait,
+    upcast: Option<UpcastTrait>,
+}
+impl ToTokens for HiddenItems {
+    fn to_tokens(&self, stream: &mut ::proc_macro2::TokenStream) {
+        let module_name = &self.module_name;
+        let seal = &self.seal;
+        let upcast = &self.upcast;
+        stream.append_all(quote! {
+            mod #module_name {
+                #seal
+                #upcast
+            }
+        })
+    }
+}
+struct SealedTrait;
+impl ToTokens for SealedTrait {
+    fn to_tokens(&self, stream: &mut ::proc_macro2::TokenStream) {
+        stream.append_all(quote! {
+            pub trait Sealed {}
+        });
+    }
+}
+// TODO: upcast_ref and upcast_ref_mut
+struct UpcastTrait {
+    // TODO: make this a type instead
+    // we need TargetEnum<Self> for this.
+    target: Ident,
+    /// Default implementation of the upcast method.
+    default: Option<Path>,
+}
+impl ToTokens for UpcastTrait {
+    fn to_tokens(&self, stream: &mut ::proc_macro2::TokenStream) {
+        let target = &self.target;
+        match self.default {
+            Some(ref path) => {
+                stream.append_all(quote! {
+                    pub trait Upcast {
+                        fn upcast(self) -> #target {
+                            #path(self)
+                        }
+                    }
+                })
+            },
+            None => {
+                stream.append_all(quote! {
+                    pub trait Upcast {
+                        fn upcast(self) -> #target;
+                    }
+                })
+            }
+        }
+    }
+}
+/// Group of items we do want to directly expose.
+/// This does not place its items inside of a module.
+///
+/// Note that this does not, and is not intended to,
+/// control visibility modifiers.
+struct NakedItems {
+    seal_impls: SealedTraitImpls,
+    upcast_impls: UpcastImpls,
+}
+struct TraitEnum {
+    variants: Vec<ImplType>,
+}
+struct TraitEnumFromVariantImpls {}
+struct SealedTraitImpls {
+    impls: Vec<ImplType>,
+}
+struct UpcastImpls {
+    impls: Vec<ImplType>,
+}
+
+#[proc_macro_attribute]
+pub fn unsealed(args: TokenStream, input: TokenStream) -> TokenStream {
+    input
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
